@@ -1,0 +1,148 @@
+syntax = "proto3";
+package remote;
+option go_package = "protocol;protocol";
+
+message Remote {
+    string id = 1;
+    string mqttTopicPrefix = 2;
+    string name = 4;
+}
+
+message RemoteStatus {
+    string remoteId = 1;
+    bool online = 2;
+    string lifesign = 3;
+    Command lastCommand = 4;
+}
+
+message Command {
+    string name = 1;
+    NECCommand command = 2;
+    RC6Command rc6_command = 3;
+}
+
+message NECCommand {
+    int32 deviceId = 1;
+    int32 command = 2;
+}
+
+message RC6Command {
+    int32 mode = 1;
+    int32 control = 2;
+    int32 information = 3;
+}
+
+message Scene {
+    repeated Instruction instructions = 2;
+}
+
+message Repeat {
+    int32 times = 1;
+    Instruction instruction = 2;
+}
+
+message Instruction {
+    Command command = 1;
+    Scene scene = 2;
+    Repeat repeat = 3;
+    Wait wait = 4;
+}
+
+message Wait {
+    int32 seconds = 1;
+    int32 milliseconds = 2;
+}
+
+message DescriptiveScene {
+    string id = 1;
+    string name = 2;
+    string description = 3;
+    int32 sortKey = 4;
+    Scene scene = 5;
+    Function function = 6;
+}
+
+message Theater {
+    string id = 1;
+    string name = 2;
+    string remoteId = 3;
+    int32 sortKey = 4;
+    repeated DescriptiveScene scenes = 5;
+    string icon = 6;
+}
+
+message TheatersResponse {
+    repeated Theater theaters = 1;
+}
+
+enum Function {
+    POWER_TOGGLE = 0;
+    UP = 1;
+    RIGHT = 2;
+    DOWN = 3;
+    LEFT = 4;
+    OK = 5;
+    BACK = 6;
+    EXIT = 7;
+    POWER_ON = 8;
+    POWER_OFF = 9;
+    VOLUME_UP = 10;
+    VOLUME_DOWN = 11;
+    PROGRAM_UP =  12;
+    PROGRAM_DOWN = 13;
+    ZERO = 20;
+    ONE = 21;
+    TWO = 22;
+    THREE = 23;
+    FOUR = 24;
+    FIVE = 25;
+    SIX = 26;
+    SEVEN = 27;
+    EIGHT = 28;
+    NINE = 29;
+    VOLUME_MUTE = 30;
+    PLAY = 31;
+    PAUSE = 32;
+    PLAY_PAUSE = 33;
+    STOP = 34;
+    FAST_FORWARD = 35;
+    FAST_REWIND = 36;
+}
+
+message remoteQueryParams {
+    string id = 1;
+}
+
+message playSceneParams {
+    string remoteId = 1;
+    Scene scene = 2;
+}
+
+message playCommandParams {
+    string remoteId = 1;
+    Command command = 2;
+}
+
+message PlayResponse {
+    bool ok = 1;
+}
+
+message setTheaterQueryParams {
+    string remoteId = 1;
+    Theater theater = 2;
+}
+
+message removeTheaterQueryParams {
+    string remoteId = 1;
+    string theaterId = 2;
+}
+
+service remoteService {
+  rpc getRemote(remoteQueryParams) returns (Remote);
+  rpc getTheatersOf(remoteQueryParams) returns (TheatersResponse);
+  rpc setTheater(setTheaterQueryParams) returns (TheatersResponse);
+  rpc removeTheater(removeTheaterQueryParams) returns (TheatersResponse);
+  rpc getStatus(remoteQueryParams) returns (RemoteStatus);
+  rpc playScene(playSceneParams) returns (PlayResponse);
+  rpc playCommand(playCommandParams) returns (PlayResponse);
+}
