@@ -7,6 +7,8 @@ const (
 	TypeNEC = "NEC"
 	// TypeRC6 is the command type for RC6 commands on the MQTT broker
 	TypeRC6 = "RC6"
+	// TypeISCP is the command type for ISCP commands on the MQTT broker
+	TypeISCP = "ISCP"
 	// TypeRepeat is the command type for repeat commands on the MQTT broker
 	TypeRepeat = "REPEAT"
 	// TypeScene is the repeat command for the scene configuration
@@ -34,16 +36,29 @@ func serializeRc6Command(command *protocol.RC6Command) map[string]interface{} {
 	}
 }
 
+func serializeIscpCommand(command *protocol.ISCPCommand) map[string]interface{} {
+	return map[string]interface{}{
+		"type":       TypeISCP,
+		"identifier": command.GetIdentifier(),
+		"command":    command.GetCommand(),
+		"argument":   command.GetArgument(),
+	}
+}
+
 // SerializeCommand identifies the type of command and serializes it to a map which can be
-// used for json serialization inside of a
+// used for json serialization inside of an MQTT message.
 func SerializeCommand(command *protocol.Command) map[string]interface{} {
 	necCommand := command.GetCommand()
-	if necCommand != nil {
+	if necCommand != nil && (necCommand.Command != 0 || necCommand.DeviceId != 0) {
 		return serializeNECCommand(necCommand)
 	}
 	rc6Command := command.GetRc6Command()
-	if rc6Command != nil {
+	if rc6Command != nil && (rc6Command.Control != 0 || rc6Command.Information != 0) {
 		return serializeRc6Command(rc6Command)
+	}
+	iscpCommand := command.GetIscpCommand()
+	if iscpCommand != nil {
+		return serializeIscpCommand(iscpCommand)
 	}
 	return nil
 }

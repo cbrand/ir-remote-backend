@@ -19,6 +19,7 @@ message Command {
     string name = 1;
     NECCommand command = 2;
     RC6Command rc6_command = 3;
+    ISCPCommand iscp_command = 4;
 }
 
 message NECCommand {
@@ -30,6 +31,12 @@ message RC6Command {
     int32 mode = 1;
     int32 control = 2;
     int32 information = 3;
+}
+
+message ISCPCommand {
+    string identifier = 1;
+    string command = 2;
+    string argument = 3;
 }
 
 message Scene {
@@ -73,6 +80,18 @@ message Theater {
 
 message TheatersResponse {
     repeated Theater theaters = 1;
+}
+
+message IscpStatus {
+    string identifier = 1;
+    string modelName = 2;
+    string areaCode = 3;
+    string deviceCategory = 4;
+    string iscpPort = 5;
+}
+
+message IscpStatusResponse {
+    repeated IscpStatus devices = 1;
 }
 
 enum Function {
@@ -140,6 +159,7 @@ message removeTheaterQueryParams {
 service remoteService {
   rpc getRemote(remoteQueryParams) returns (Remote);
   rpc getTheatersOf(remoteQueryParams) returns (TheatersResponse);
+  rpc getIscpStatusOf(remoteQueryParams) returns (IscpStatusResponse);
   rpc setTheater(setTheaterQueryParams) returns (TheatersResponse);
   rpc removeTheater(removeTheaterQueryParams) returns (TheatersResponse);
   rpc getStatus(remoteQueryParams) returns (RemoteStatus);

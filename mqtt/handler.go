@@ -2,11 +2,15 @@ package mqtt
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
+	"time"
 
 	"github.com/cbrand/ir-remote-backend/protocol"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
+
+var ErrTimeout = errors.New("Timeout when waiting for IR response")
 
 // NewHandlerFromOptions returns a mqtt client for a specific handler.
 func NewHandlerFromOptions(options *mqtt.ClientOptions) *Handler {
@@ -24,13 +28,16 @@ func NewHandler(client mqtt.Client) *Handler {
 	return &Handler{
 		mqttClient:   client,
 		remoteStatus: map[string]*RemoteStatus{},
+		iscpStatus:   map[string][]*IscpStatus{},
 	}
 }
 
 // Handler supports to send and retrieve data via MQTT to and from the connected remotes
 type Handler struct {
-	mqttClient   mqtt.Client
-	remoteStatus map[string]*RemoteStatus
+	mqttClient             mqtt.Client
+	remoteStatus           map[string]*RemoteStatus
+	iscpStatus             map[string][]*IscpStatus
+	iscpStatusRegistration map[string]bool
 }
 
 // Monitor starts checking for the specified remote the online status and returns the current
@@ -39,29 +46,106 @@ func (handler *Handler) Monitor(remote *protocol.Remote) (*RemoteStatus, error) 
 	remoteStatus, ok := handler.remoteStatus[remote.GetMqttTopicPrefix()]
 	var err error = nil
 	if !ok {
-		handler.connectIfNecessary()
-		remoteStatus := &RemoteStatus{}
-		handler.remoteStatus[remote.GetMqttTopicPrefix()] = remoteStatus
-		remoteStatus.Online = false
-		token := handler.mqttClient.Subscribe(handler.topicFor(remote, "livesign"), 1, func(client mqtt.Client, message mqtt.Message) {
-			liveSignMessage := &LiveSignMessage{}
-			err := json.Unmarshal(message.Payload(), liveSignMessage)
-			if err != nil {
-				return
-			}
-			message.Ack()
-
-			remoteStatus, ok := handler.remoteStatus[remote.GetMqttTopicPrefix()]
-			if !ok {
-				return
-			}
-			remoteStatus.Lifesign = liveSignMessage.Datetime.ToIso8601()
-			remoteStatus.Update()
-		})
-		token.Wait()
-		err = token.Error()
+		handler.remoteStatus[remote.GetMqttTopicPrefix()] = nil
+		err = handler.startMonitoringFor(remote)
 	}
 	return remoteStatus, err
+}
+
+// startMonitoringFor starts the monitoring handler for the passed remote.
+func (handler *Handler) startMonitoringFor(remote *protocol.Remote) error {
+	handler.connectIfNecessary()
+	remoteStatus := &RemoteStatus{}
+	handler.remoteStatus[remote.GetMqttTopicPrefix()] = remoteStatus
+	remoteStatus.Online = false
+	token := handler.mqttClient.Subscribe(handler.topicFor(remote, "livesign"), 1, func(client mqtt.Client, message mqtt.Message) {
+		liveSignMessage := &LiveSignMessage{}
+		err := json.Unmarshal(message.Payload(), liveSignMessage)
+		if err != nil {
+			return
+		}
+		message.Ack()
+
+		remoteStatus, ok := handler.remoteStatus[remote.GetMqttTopicPrefix()]
+		if !ok {
+			return
+		}
+		remoteStatus.Lifesign = liveSignMessage.Datetime.ToIso8601()
+		remoteStatus.Update()
+	})
+	token.Wait()
+	return token.Error()
+}
+
+// GetIscpStatus queries the remote for the specific ISCP status
+func (handler *Handler) GetIscpStatus(remote *protocol.Remote) ([]*IscpStatus, error) {
+	handler.connectIfNecessary()
+	err := handler.registerIscpStatusSubscriptionIfNecessary(remote)
+	if err != nil {
+		return nil, err
+	}
+
+	handler.iscpStatus[remote.GetMqttTopicPrefix()] = nil
+	iscpStatusListChannel := make(chan []*IscpStatus, 1)
+	endPoll := false
+
+	go func() {
+		for !endPoll {
+			iscpStatus, ok := handler.iscpStatus[remote.GetMqttTopicPrefix()]
+			if ok && iscpStatus != nil {
+				iscpStatusListChannel <- iscpStatus
+				endPoll = true
+			}
+		}
+	}()
+
+	token := handler.mqttClient.Publish(handler.topicFor(remote, "iscp/discover"), 1, false, "")
+	token.Wait()
+	err = token.Error()
+	if err != nil {
+		return nil, err
+	}
+
+	select {
+	case result := <-iscpStatusListChannel:
+		return result, nil
+	case <-time.After(10 * time.Second):
+		endPoll = true
+		return nil, ErrTimeout
+	}
+}
+
+// registerIscpStatusSubscription checks if a subscription is already created for the remote
+// if not registers it.
+func (handler *Handler) registerIscpStatusSubscriptionIfNecessary(remote *protocol.Remote) error {
+	registered, ok := handler.iscpStatusRegistration[remote.GetMqttTopicPrefix()]
+	if registered && ok {
+		return nil
+	}
+
+	return handler.registerIscpStatusSubscription(remote)
+}
+
+// registerIscpStatusSubscription registers the subscription without checking if it is already registered
+func (handler *Handler) registerIscpStatusSubscription(remote *protocol.Remote) error {
+	handler.connectIfNecessary()
+
+	handler.iscpStatusRegistration[remote.GetMqttTopicPrefix()] = true
+	token := handler.mqttClient.Subscribe(handler.topicFor(remote, "iscp/discover/result"), 1, func(client mqtt.Client, message mqtt.Message) {
+		iscpResults := []*IscpStatus{}
+		err := json.Unmarshal(message.Payload(), iscpResults)
+		if err != nil {
+			return
+		}
+		message.Ack()
+		handler.iscpStatus[remote.GetMqttTopicPrefix()] = iscpResults
+	})
+	token.Wait()
+	err := token.Error()
+	if err != nil {
+		handler.iscpStatusRegistration[remote.GetMqttTopicPrefix()] = false
+	}
+	return err
 }
 
 // SendScene puts the provided scene to the MQTT server for the remote to be sent

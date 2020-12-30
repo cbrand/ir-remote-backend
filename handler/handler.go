@@ -135,3 +135,33 @@ func (server *Server) PlayCommand(ctx context.Context, playCommandParams *protoc
 	response.Ok = true
 	return response, err
 }
+
+// GetIscpStatusOf returns the iscp status of the passed remote information.
+func (server *Server) GetIscpStatusOf(ctx context.Context, remoteQueryParams *protocol.RemoteQueryParams) (*protocol.IscpStatusResponse, error) {
+	remote, err := server.storage.Get(remoteQueryParams.GetId())
+	response := &protocol.IscpStatusResponse{
+		Devices: []*protocol.IscpStatus{},
+	}
+	if err != nil {
+		return response, err
+	}
+
+	iscpStatus, err := server.mqttHandler.GetIscpStatus(remote)
+	if err != nil {
+		return response, err
+	}
+
+	protocolStatusSlice := []*protocol.IscpStatus{}
+	for _, status := range iscpStatus {
+		protocolStatus := &protocol.IscpStatus{
+			Identifier:     status.Identifier,
+			ModelName:      status.ModelName,
+			AreaCode:       status.AreaCode,
+			DeviceCategory: status.DeviceCategory,
+			IscpPort:       status.IscpPort,
+		}
+		protocolStatusSlice = append(protocolStatusSlice, protocolStatus)
+	}
+	response.Devices = protocolStatusSlice
+	return response, nil
+}

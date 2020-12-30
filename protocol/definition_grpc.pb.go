@@ -19,6 +19,7 @@ const _ = grpc.SupportPackageIsVersion7
 type RemoteServiceClient interface {
 	GetRemote(ctx context.Context, in *RemoteQueryParams, opts ...grpc.CallOption) (*Remote, error)
 	GetTheatersOf(ctx context.Context, in *RemoteQueryParams, opts ...grpc.CallOption) (*TheatersResponse, error)
+	GetIscpStatusOf(ctx context.Context, in *RemoteQueryParams, opts ...grpc.CallOption) (*IscpStatusResponse, error)
 	SetTheater(ctx context.Context, in *SetTheaterQueryParams, opts ...grpc.CallOption) (*TheatersResponse, error)
 	RemoveTheater(ctx context.Context, in *RemoveTheaterQueryParams, opts ...grpc.CallOption) (*TheatersResponse, error)
 	GetStatus(ctx context.Context, in *RemoteQueryParams, opts ...grpc.CallOption) (*RemoteStatus, error)
@@ -46,6 +47,15 @@ func (c *remoteServiceClient) GetRemote(ctx context.Context, in *RemoteQueryPara
 func (c *remoteServiceClient) GetTheatersOf(ctx context.Context, in *RemoteQueryParams, opts ...grpc.CallOption) (*TheatersResponse, error) {
 	out := new(TheatersResponse)
 	err := c.cc.Invoke(ctx, "/remote.remoteService/getTheatersOf", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *remoteServiceClient) GetIscpStatusOf(ctx context.Context, in *RemoteQueryParams, opts ...grpc.CallOption) (*IscpStatusResponse, error) {
+	out := new(IscpStatusResponse)
+	err := c.cc.Invoke(ctx, "/remote.remoteService/getIscpStatusOf", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -103,6 +113,7 @@ func (c *remoteServiceClient) PlayCommand(ctx context.Context, in *PlayCommandPa
 type RemoteServiceServer interface {
 	GetRemote(context.Context, *RemoteQueryParams) (*Remote, error)
 	GetTheatersOf(context.Context, *RemoteQueryParams) (*TheatersResponse, error)
+	GetIscpStatusOf(context.Context, *RemoteQueryParams) (*IscpStatusResponse, error)
 	SetTheater(context.Context, *SetTheaterQueryParams) (*TheatersResponse, error)
 	RemoveTheater(context.Context, *RemoveTheaterQueryParams) (*TheatersResponse, error)
 	GetStatus(context.Context, *RemoteQueryParams) (*RemoteStatus, error)
@@ -120,6 +131,9 @@ func (UnimplementedRemoteServiceServer) GetRemote(context.Context, *RemoteQueryP
 }
 func (UnimplementedRemoteServiceServer) GetTheatersOf(context.Context, *RemoteQueryParams) (*TheatersResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTheatersOf not implemented")
+}
+func (UnimplementedRemoteServiceServer) GetIscpStatusOf(context.Context, *RemoteQueryParams) (*IscpStatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetIscpStatusOf not implemented")
 }
 func (UnimplementedRemoteServiceServer) SetTheater(context.Context, *SetTheaterQueryParams) (*TheatersResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetTheater not implemented")
@@ -181,6 +195,24 @@ func _RemoteService_GetTheatersOf_Handler(srv interface{}, ctx context.Context, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(RemoteServiceServer).GetTheatersOf(ctx, req.(*RemoteQueryParams))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RemoteService_GetIscpStatusOf_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RemoteQueryParams)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RemoteServiceServer).GetIscpStatusOf(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/remote.remoteService/getIscpStatusOf",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RemoteServiceServer).GetIscpStatusOf(ctx, req.(*RemoteQueryParams))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -286,6 +318,10 @@ var _RemoteService_serviceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "getTheatersOf",
 			Handler:    _RemoteService_GetTheatersOf_Handler,
+		},
+		{
+			MethodName: "getIscpStatusOf",
+			Handler:    _RemoteService_GetIscpStatusOf_Handler,
 		},
 		{
 			MethodName: "setTheater",
