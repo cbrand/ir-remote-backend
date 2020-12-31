@@ -10,6 +10,8 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
+// ErrTimeout is returned when the request with an expected response cannot be
+// retrieved in time.
 var ErrTimeout = errors.New("Timeout when waiting for IR response")
 
 // NewHandlerFromOptions returns a mqtt client for a specific handler.
@@ -26,9 +28,11 @@ func NewHandlerFromOptions(options *mqtt.ClientOptions) *Handler {
 // NewHandler returns a new mqtt handler backed by the passed mqtt client.
 func NewHandler(client mqtt.Client) *Handler {
 	return &Handler{
-		mqttClient:   client,
-		remoteStatus: map[string]*RemoteStatus{},
-		iscpStatus:   map[string][]*IscpStatus{},
+		mqttClient:             client,
+		remoteStatus:           map[string]*RemoteStatus{},
+		iscpStatus:             map[string][]*IscpStatus{},
+		iscpStatusChannel:      map[string]chan []*IscpStatus{},
+		iscpStatusRegistration: map[string]bool{},
 	}
 }
 
@@ -37,6 +41,7 @@ type Handler struct {
 	mqttClient             mqtt.Client
 	remoteStatus           map[string]*RemoteStatus
 	iscpStatus             map[string][]*IscpStatus
+	iscpStatusChannel      map[string]chan []*IscpStatus
 	iscpStatusRegistration map[string]bool
 }
 
@@ -86,18 +91,7 @@ func (handler *Handler) GetIscpStatus(remote *protocol.Remote) ([]*IscpStatus, e
 	}
 
 	handler.iscpStatus[remote.GetMqttTopicPrefix()] = nil
-	iscpStatusListChannel := make(chan []*IscpStatus, 1)
-	endPoll := false
-
-	go func() {
-		for !endPoll {
-			iscpStatus, ok := handler.iscpStatus[remote.GetMqttTopicPrefix()]
-			if ok && iscpStatus != nil {
-				iscpStatusListChannel <- iscpStatus
-				endPoll = true
-			}
-		}
-	}()
+	iscpStatusListChannel := handler.iscpStatusChannel[remote.GetMqttTopicPrefix()]
 
 	token := handler.mqttClient.Publish(handler.topicFor(remote, "iscp/discover"), 1, false, "")
 	token.Wait()
@@ -110,7 +104,6 @@ func (handler *Handler) GetIscpStatus(remote *protocol.Remote) ([]*IscpStatus, e
 	case result := <-iscpStatusListChannel:
 		return result, nil
 	case <-time.After(10 * time.Second):
-		endPoll = true
 		return nil, ErrTimeout
 	}
 }
@@ -130,15 +123,17 @@ func (handler *Handler) registerIscpStatusSubscriptionIfNecessary(remote *protoc
 func (handler *Handler) registerIscpStatusSubscription(remote *protocol.Remote) error {
 	handler.connectIfNecessary()
 
+	handler.iscpStatusChannel[remote.GetMqttTopicPrefix()] = make(chan []*IscpStatus)
 	handler.iscpStatusRegistration[remote.GetMqttTopicPrefix()] = true
 	token := handler.mqttClient.Subscribe(handler.topicFor(remote, "iscp/discover/result"), 1, func(client mqtt.Client, message mqtt.Message) {
 		iscpResults := []*IscpStatus{}
-		err := json.Unmarshal(message.Payload(), iscpResults)
+		err := json.Unmarshal(message.Payload(), &iscpResults)
 		if err != nil {
 			return
 		}
 		message.Ack()
 		handler.iscpStatus[remote.GetMqttTopicPrefix()] = iscpResults
+		handler.iscpStatusChannel[remote.GetMqttTopicPrefix()] <- iscpResults
 	})
 	token.Wait()
 	err := token.Error()
