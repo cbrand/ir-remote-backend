@@ -128,6 +128,7 @@ enum Function {
     FAST_REWIND = 36;
     SUBTITLE = 37;
     LANGUAGE = 38;
+    MENU = 39;
 }
 
 message remoteQueryParams {
